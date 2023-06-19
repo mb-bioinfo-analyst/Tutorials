@@ -1,0 +1,536 @@
+---
+title: "Tutorial: Using R with SQL Server"
+author: Bilal Mustafa
+date: "June 15, 2023"
+output:
+  html_notebook:
+    toc: yes
+---
+
+
+
+
+```{r echo=FALSE, message = FALSE, warning=FALSE, results='hide'}
+# <!-- ![an image caption Source: https://www.artgeek.com.br/caneca-linguagem-sql-server](images/caneca-linguagem-sql-server-0b7f8bcd.webp) ![an image caption Source: https://en.wikipedia.org/wiki/R_%28programming_language%29](images/R_logo.svg.png) -->
+
+
+library(cowplot)
+library(magick)
+
+ggdraw() + 
+  draw_image("images/caneca-linguagem-sql-server-0b7f8bcd.webp", width = 0.5) + 
+  draw_image("images/R_logo.svg.png", width = 0.5, x = 0.5)
+```
+
+# Install and load the required libraries
+
+```{r echo=TRUE, message = FALSE, warning=FALSE,results='hide'}
+
+packages <- c("RODBC", "DBI","odbc", "dplyr", "cowplot", "magick")
+
+# function to check and install packages
+check_and_install_package <- function(package_name) {
+  if (!require(package_name, character.only = TRUE)) {
+    install.packages(package_name, dependencies = TRUE, quiet = TRUE)
+    library(package_name, character.only = TRUE)
+  }
+}
+
+# load packages dynamically
+lapply(packages, check_and_install_package)
+
+```
+
+
+---
+
+
+# Create a new database
+
+---
+
+
+To create a new database from R and establish a *connection* to **SQL Server**, you can use the DBI package along with the odbc package.
+
+
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+# Modification: R2SQL should be replaced with the name of your SQL Server instance. 
+
+# Establish a connection to SQL Server
+
+conn <- odbcConnect("R2SQL")
+
+# Create a new database
+create_database_query <- "CREATE DATABASE Tutorial_DB;"
+sqlQuery(channel = conn, query = create_database_query)
+
+# Close the database connection
+odbcClose(conn)
+
+
+# After executing this code, you should have a new database created on your SQL Server instance.
+
+```
+
+---
+
+# Create a new table
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+
+# Establish a connection to SQL Server
+conn <- odbcConnect("R2SQL")
+
+# Define the SQL statement to create a new table
+create_table_sql <- "
+  CREATE TABLE Tutorial_DB.dbo.table_1 (
+    column1 INT,
+    column2 VARCHAR(50),
+    column3 DATE
+  );"
+
+# Execute the SQL statement to create the table
+sqlQuery(conn, create_table_sql)
+
+# Close the database connection
+odbcClose(conn)
+
+
+```
+
+---
+
+# Generate sample data
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Insert sample data into the table
+employees <- data.frame(
+  EmployeeID = c(1, 2, 3, 4, 5),
+  FirstName = c("John", "Jane", "Mike", "Sarah", "David"),
+  LastName = c("Doe", "Smith", "Johnson", "Williams", "Brown"),
+  Age = c(32, 28, 35, 42, 36),
+  Salary = c(50000, 60000, 55000, 70000, 65000)
+)
+
+# Save the data frame to the database table
+sqlSave(channel = conn, dat = employees, tablename = "Employees", append = TRUE, rownames = FALSE, colnames = FALSE, safer = TRUE, fast = FALSE)
+
+# sqlSave(channel = conn, dat = employees, tablename = "_Employees", append = TRUE, rownames = FALSE, colnames = FALSE, safer = TRUE, fast = FALSE)
+
+# Close the database connection
+odbcClose(conn)
+
+
+```
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+# To generate sample data consisting of 15 columns and 150 rows in R and insert it into a SQL Server database, you can modify the code as follows:
+
+
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Generate sample data
+sample_data <- matrix(rnorm(150 * 15), nrow = 150)
+colnames(sample_data) <- paste0("Column", 1:15)
+
+# Convert the matrix to a data frame
+sample_df <- as.data.frame(sample_data)
+
+# Create a SQL query to generate the CREATE TABLE statement
+create_table_query <- "CREATE TABLE SampleData ("
+for (i in seq_along(sample_df)) {
+  col_name <- colnames(sample_df)[i]
+  col_type <- ifelse(is.numeric(sample_df[[i]]), "FLOAT", "VARCHAR(255)")  # Adjust the column types as per your data
+  create_table_query <- paste0(create_table_query, col_name, " ", col_type)
+  if (i < length(sample_df)) {
+    create_table_query <- paste0(create_table_query, ", ")
+  }
+}
+create_table_query <- paste0(create_table_query, ");")
+
+# Execute the SQL query to create the table
+sqlQuery(conn, create_table_query)
+
+# Insert sample data into the table
+sqlSave(
+  channel = conn,
+  dat = sample_df,
+  tablename = "SampleData",
+  append = TRUE,
+  rownames = FALSE,
+  colnames = FALSE,
+  safer = TRUE,
+  fast = FALSE
+)
+
+# Fetch and display a sample of the data
+sample_query <- "SELECT TOP 10 * FROM SampleData;"
+sample_result <- sqlQuery(conn, sample_query)
+print(sample_result)
+
+# Close the database connection
+odbcClose(conn)
+
+
+```
+
+---
+
+# Retrieving Data
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Execute a SELECT query
+query <- "SELECT SUM(*) AS RowSum FROM SampleData where SUM(*) > 5;"
+data <- sqlQuery(conn, query)
+
+# Print the retrieved data
+print(data)
+
+# 2nd query for getting the row sums 
+# Get the list of column names from your table
+columns <- sqlColumns(channel = conn, sqtable = "SampleData")$COLUMN_NAME
+
+# Construct the SQL query dynamically to sum all columns
+sum_query <- paste("SELECT", paste(columns,   collapse = " + "), "AS RowSum FROM SampleData;")
+
+# Execute the query and fetch the result
+result <- sqlQuery(conn, sum_query)
+
+# Display the result
+print(result)
+
+
+
+# Close the database connection
+odbcClose(conn)
+
+
+
+```
+
+
+---
+
+# Modifying Data
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Execute an INSERT statement
+insert_query <- "INSERT INTO Employees (FirstName, LastName) VALUES ('Ant', 'Cox')"
+sqlQuery(conn, insert_query)
+
+# Execute an UPDATE statement
+update_query <- "UPDATE Employees SET FirstName = 'Anthony' WHERE LastName = 'Cox'"
+sqlQuery(conn, update_query)
+
+# Execute a DELETE statement
+delete_query <- "DELETE FROM Employees WHERE FirstName = 'Anthony'"
+sqlQuery(conn, delete_query)
+
+# Close the database connection
+odbcClose(conn)
+
+
+# The INSERT INTO statement is used to add new rows to the table, specifying the values for the columns.
+# 
+# The UPDATE statement is used to modify existing rows in the table, setting new values for specific columns based on a condition.
+# 
+# The DELETE FROM statement is used to remove rows from the table based on a condition.
+
+```
+
+---
+
+# Data Aggregation and Analysis
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Execute an aggregation query
+aggregation_query <- "SELECT column1, AVG(column2) AS average, SUM(column3) AS total_sum FROM SampleData GROUP BY column1"
+aggregated_data <- sqlQuery(conn, aggregation_query)
+
+# Print the aggregated data
+print(aggregated_data)
+```
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+# Execute an analysis query
+analysis_query <- "SELECT column1, COUNT(*) AS count, MAX(column2) AS max_value, MIN(column2) AS min_value FROM SampleData GROUP BY column1 HAVING COUNT(*) > 0;"
+analysis_data <- sqlQuery(conn, analysis_query)
+
+# Print the analysis data
+print(analysis_data)
+
+# Close the database connection
+odbcClose(conn)
+
+
+
+# The GROUP BY clause is used for data aggregation, specifying the column(s) by which the data should be grouped.
+# 
+# Aggregate functions such as AVG, SUM, COUNT, MAX, and MIN are used to perform calculations on the grouped data.
+# 
+# Adjust the queries and conditions based on your specific requirements.
+
+```
+
+---
+
+# Data Manipulation in R
+
+---
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+# You can use various R functions and operations to manipulate the data, such as filtering rows, modifying column values, creating new columns, sorting data, etc.
+# Use the modified data as needed for further analysis or visualization.
+# If you want to modify the data in the database itself, you can execute appropriate SQL queries using the sqlQuery() function.
+# Note that performing data manipulation in R itself provides more flexibility and allows you to leverage the extensive capabilities of R for data processing and transformation. However, for large datasets, it may be more efficient to perform the data manipulation directly in the SQL database using appropriate SQL queries.
+
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Execute a SELECT query to retrieve data
+select_query <- "SELECT * FROM Employees"
+data <- sqlQuery(conn, select_query)
+
+# Perform data manipulation using R functions
+# For example, filtering rows based on a condition
+filtered_data <- subset(data, Salary > 60000)
+
+# Modifying values in a specific column
+data$Salary <- data$Salary * 0.30
+
+# Creating a new column based on existing columns
+data$FullName <- paste(data$FirstName, data$LastName, sep = " ")
+
+# Sort the data based on a column
+sorted_data <- data[order(data$Age), ]
+
+# Execute an UPDATE query to modify data in the database
+update_query <- "UPDATE Employees SET Age = Age + 2 WHERE FirstName = 'John'"
+sqlQuery(conn, update_query)
+
+# Execute an INSERT query to add new rows to the database
+insert_query <- "INSERT INTO Employees (EmployeeID, FirstName, LastName, Age) VALUES (6, 'Scot', 'Cox', 35)"
+sqlQuery(conn, insert_query)
+
+# Execute a DELETE query to remove rows from the database
+delete_query <- "DELETE FROM Employees WHERE LastName = 'cox'"
+sqlQuery(conn, delete_query)
+
+# Close the database connection
+odbcClose(conn)
+
+
+```
+
+---
+
+# Advanced SQL Features
+
+---
+
+The complex_query variable contains an example of a complex SQL query with advanced features:
+SELECT: Specifies the columns to retrieve from the table.
+AVG(): Computes the average of a specific column (column2 in this case) and assigns it an alias (average).
+COUNT(): Counts the number of rows and assigns it an alias (count).
+WHERE: Filters rows based on a condition (column3 > 100 in this case).
+GROUP BY: Groups the result by a specific column (column1 in this case).
+HAVING: Filters groups based on a condition (count > 5 in this case).
+ORDER BY: Sorts the result by a specific column (average in descending order).
+LIMIT: Limits the number of rows in the result to a specific number (10 in this case).
+The result variable stores the result of the SQL query.
+You can perform additional data manipulation, analysis, or visualization on the result as needed.
+
+
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+
+
+
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Execute a complex SQL query with advanced features
+complex_query <-
+  "SELECT Column1, AVG(Column2) AS average, COUNT(*) AS count FROM SampleData WHERE Column3 < 0 GROUP BY Column1 HAVING COUNT(*) > 0 ORDER BY AVG(Column2) DESC"
+
+result <- sqlQuery(conn, complex_query)
+
+print(result)
+
+# Perform additional data manipulation or analysis on the result
+# For example, accessing specific columns or rows, computing additional statistics, etc.
+
+# Close the database connection
+odbcClose(conn)
+
+
+```
+
+
+---
+
+# Save the result to a new table in db
+
+---
+
+After executing the query, the result will be stored in the result data frame. You can perform any additional data manipulation or analysis on this result if needed.
+
+Make sure you have the appropriate permissions and access rights to create a new table and save data to the database.
+
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Execute a complex SQL query with advanced features
+complex_query <-
+  "SELECT Column1, AVG(Column2) AS average, COUNT(*) AS count FROM SampleData WHERE Column3 < 0 GROUP BY Column1 HAVING COUNT(*) > 0 ORDER BY AVG(Column2) DESC"
+
+result <- sqlQuery(conn, complex_query)
+
+# Perform additional data manipulation or analysis on the result
+# For example, accessing specific columns or rows, computing additional statistics, etc.
+
+# Create a new table to store the result
+new_table <-
+  "Filtered_SampleData"  # Replace with your desired table name
+
+sqlSave(
+  channel = conn,
+  dat = result,
+  tablename = new_table,
+  append = TRUE,
+  rownames = FALSE,
+  colnames = FALSE,
+  safer = TRUE,
+  fast = FALSE
+)
+
+# Close the database connection
+odbcClose(conn)
+
+
+```
+
+
+---
+
+# Error Handling and Troubleshooting
+
+---
+
+When working with SQL in R, it's important to handle errors and troubleshoot any issues that may arise. 
+
+The tryCatch() function is used to catch any errors that may occur during the query execution. You can customize the error handling by defining an error handling function inside tryCatch().
+Inside the error handling function, you can handle the error as per your requirements. In this example code, it simply prints the error message.
+
+The inherits() function is used to check if the result is an error object (try-error class). If an error occurred, you can troubleshoot the issue accordingly.
+If no error occurred, you can process the query result as needed. In the example code, it prints a success message and the query result.
+By handling errors and troubleshooting SQL queries, you can identify and resolve issues in your R code that interact with a database.
+
+Here's an example of how you can handle errors and troubleshoot SQL queries in R;
+
+```{r echo=TRUE, message = FALSE, warning=FALSE, results='hide'}
+
+
+# Establish the database connection
+conn <- odbcConnect("R2SQL")  # Replace with your data source name
+
+# Execute an SQL query
+query <- "SELECT * FROM Employees"
+result <- tryCatch(
+  {
+    sqlQuery(conn, query)
+  },
+  error = function(e) {
+    # Handle the error
+    print(paste("Error:", e$message))
+    NULL  # Return NULL or an appropriate value
+  }
+)
+
+# Check if an error occurred during the query execution
+if (inherits(result, "try-error")) {
+  # Troubleshoot the issue
+  print("An error occurred during the query execution.")
+  print("Please check the SQL syntax, table name, and column names.")
+} else {
+  # Process the query result
+  print("Query executed successfully!")
+  print(result)
+}
+
+# Close the database connection
+odbcClose(conn)
+
+```
+
+---
+
+# Best Practices
+
+---
+
+It is critical to follow best practices while dealing with SQL in R to guarantee efficient and successful data extraction, manipulation, and analysis. Consider the following recommended practices:
+
+When supplying values to SQL queries, utilize parameterized queries rather than explicitly concatenating data into the query string. This aids in the prevention of SQL injection and boosts query speed.
+
+Optimize queries: Use suitable indexing, minimize unnecessary joins, and use aggregate functions and grouping where necessary to write efficient SQL queries. Think about the performance consequences of your queries, especially if you're working with huge datasets.
+
+Use proper data types: Make sure your R variables' data types match the data types in the database. It aids in the prevention of conversion mistakes and assures the proper retrieval and manipulation of data.
+
+Handle missing values: Take into account missing values in your data by properly handling NULLs or NA values. To filter or handle missing data in your queries, utilize methods like is.na() or SQL clauses like IS NULL.
+
+Take advantage of database capabilities: Use the tools and functionalities provided by your database management system (DBMS). SQL functions, aggregate functions, and other features can be used to execute computations and transformations directly in the database, decreasing data transmission between the database and R.
+
+Use database indexes: If you regularly query certain columns, consider implementing database indexes on those columns. Indexes can enhance query speed dramatically by lowering the quantity of data that must be scanned.
+
+When working with huge datasets, consider splitting up your data processing operations into smaller batches or pieces. This method aids in memory management and minimizes any performance difficulties.
+
+Use database-specific packages: R has a number of packages that enable direct access to certain DBMSs, such as RODBC for ODBC connections and RSQLite for SQLite databases. Use these packages to take advantage of DBMS-specific optimizations and capabilities.
+
+Handle connections correctly: Open and stop your database connections as needed. Open connections just when necessary and close them after you're done accessing the database. Failure to disconnect connections might result in resource leaks and poor performance.
+
+Document your code as follows: In your R code, clearly document your SQL queries, data manipulation methods, and analytic techniques. Add comments and explanations to your code to make it more legible and comprehensible for future reference.
+
+By adhering to these best practices, you may increase the efficiency, reliability, and maintainability of your SQL-related code in R, as well as improve your overall data handling operations.
+
+
+---
+
+
