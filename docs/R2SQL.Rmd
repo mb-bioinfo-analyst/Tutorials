@@ -1,6 +1,6 @@
 ---
 title: "Tutorial: Using R with SQL Server"
-author: Bilal Mustafa
+author: Bilal Mustafa PhD
 date: "June 15, 2023"
 output:
   html_notebook:
